@@ -8,6 +8,7 @@ import java.util.Optional;
 public interface PersonRepository extends JpaRepository<Person, Long> {
     boolean existsByEmail(String email);
     boolean existsByDocumentNumber(String email);
+    boolean existsByTenantId(String tenantId);
     Optional<Person> findByIdAndTenantId(Long id, String tenantId);
     Optional<Person> findByTenantId(String tenantId);
 }

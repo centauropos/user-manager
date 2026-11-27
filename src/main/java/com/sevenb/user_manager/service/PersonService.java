@@ -141,6 +141,13 @@ public class PersonService {
             throw new ResourceAlreadyExistsException("Cuenta existente con el numero de documento : " + documentNumber);
     }
 
+    /** Person.tenantId es UNIQUE: el register/alta no puede reutilizar uno existente. */
+    public void tenantIdValidate(String tenantId) {
+        if (personRepository.existsByTenantId(tenantId)) {
+            throw new ConflictException("Ya existe una empresa con el tenantId: " + tenantId);
+        }
+    }
+
 
 
 }
