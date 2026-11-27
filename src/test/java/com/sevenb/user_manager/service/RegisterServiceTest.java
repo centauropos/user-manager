@@ -7,6 +7,7 @@ import com.sevenb.user_manager.dto.UserResponseDto;
 import com.sevenb.user_manager.entity.Person;
 import com.sevenb.user_manager.entity.RoleEntity;
 import com.sevenb.user_manager.entity.UserEntity;
+import com.sevenb.user_manager.exception.ConflictException;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.aop.framework.ProxyFactory;
@@ -26,7 +27,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -69,18 +72,18 @@ class RegisterServiceTest {
     }
 
     @Test
-    void registerGeneratesTenantIdAndIgnoresBody() {
+    void registerUsesTenantIdFromBody() {
+        String tenantId = UUID.randomUUID().toString();
         when(personService.createPerson(any())).thenAnswer(inv -> inv.getArgument(0));
         when(roleService.getRoleByNameForTenant(anyString(), anyString()))
                 .thenReturn(new RoleEntity(1L, null, "ADMIN", null, null));
 
-        service.register(request("tenant-de-otro"));
+        service.register(request(tenantId));
 
         ArgumentCaptor<Person> person = ArgumentCaptor.forClass(Person.class);
+        verify(personService).tenantIdValidate(tenantId);
         verify(personService).createPerson(person.capture());
-        String tenantId = person.getValue().getTenantId();
-        assertThat(tenantId).isNotEqualTo("tenant-de-otro");
-        assertThat(UUID.fromString(tenantId).toString()).isEqualTo(tenantId);
+        assertThat(person.getValue().getTenantId()).isEqualTo(tenantId);
         assertThat(person.getValue().getId()).isNull();
         verify(roleService).seedDefaultRolesForTenant(tenantId);
         verify(roleService).getRoleByNameForTenant("ADMIN", tenantId);
@@ -94,7 +97,46 @@ class RegisterServiceTest {
 
         ArgumentCaptor<Person> person = ArgumentCaptor.forClass(Person.class);
         verify(personService).createPerson(person.capture());
+        String tenantId = person.getValue().getTenantId();
+        assertThat(tenantId).isNotBlank();
+        assertThat(UUID.fromString(tenantId).toString()).isEqualTo(tenantId);
+        verify(personService).tenantIdValidate(tenantId);
+    }
+
+    @Test
+    void registerGeneratesTenantIdWhenBodyIsBlank() {
+        when(personService.createPerson(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.register(request("  "));
+
+        ArgumentCaptor<Person> person = ArgumentCaptor.forClass(Person.class);
+        verify(personService).createPerson(person.capture());
         assertThat(person.getValue().getTenantId()).isNotBlank();
+        assertThat(UUID.fromString(person.getValue().getTenantId()).toString())
+                .isEqualTo(person.getValue().getTenantId());
+    }
+
+    @Test
+    void registerRejectsInvalidTenantIdFormat() {
+        assertThatThrownBy(() -> service.register(request("tenant-de-otro")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tenantId inválido");
+
+        verify(personService, never()).createPerson(any());
+        verify(personService, never()).tenantIdValidate(anyString());
+    }
+
+    @Test
+    void registerRejectsDuplicateTenantId() {
+        String tenantId = UUID.randomUUID().toString();
+        doThrow(new ConflictException("Ya existe una empresa con el tenantId: " + tenantId))
+                .when(personService).tenantIdValidate(tenantId);
+
+        assertThatThrownBy(() -> service.register(request(tenantId)))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining(tenantId);
+
+        verify(personService, never()).createPerson(any());
     }
 
     @Test

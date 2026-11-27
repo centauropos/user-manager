@@ -274,4 +274,23 @@ class PersonServiceTest {
                 .isInstanceOf(AccessDeniedException.class);
         verify(billingTrialService, never()).requestTrialAfterCommit(any(), any());
     }
+
+    @Test
+    void tenantIdValidateRejectsExistingTenant() {
+        when(personRepository.existsByTenantId(TENANT)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.tenantIdValidate(TENANT))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining(TENANT);
+    }
+
+    @Test
+    void tenantIdValidateAcceptsAvailableTenant() {
+        String tenantId = UUID.randomUUID().toString();
+        when(personRepository.existsByTenantId(tenantId)).thenReturn(false);
+
+        service.tenantIdValidate(tenantId);
+
+        verify(personRepository).existsByTenantId(tenantId);
+    }
 }

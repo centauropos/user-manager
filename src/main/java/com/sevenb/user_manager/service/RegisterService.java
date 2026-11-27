@@ -31,7 +31,10 @@ public class RegisterService {
         personService.documentNumberValidate(register.getPerson().getDocumentNumber());
         userService.userValidation(register.getUser().getUsername());
         register.getPerson().setId(null);
-        register.getPerson().setTenantId(UUID.randomUUID().toString());
+        String tenantId = resolveTenantId(register.getPerson().getTenantId());
+        // TODO: validación remota contra fiscal cuando exista el contrato.
+        personService.tenantIdValidate(tenantId);
+        register.getPerson().setTenantId(tenantId);
         register.getPerson().setCreatedAt(LocalDateTime.now());
         Person person = personService.createPerson(register.getPerson());
         roleService.seedDefaultRolesForTenant(person.getTenantId());
@@ -41,5 +44,21 @@ public class RegisterService {
         UserResponseDto created = userService.createUserForRegister(register.getUser());
         billingTrialService.requestTrialAfterCommit(person, BillingTrialService.SOURCE_REGISTER);
         return created;
+    }
+
+    /**
+     * Si el body trae un UUID no blank se respeta; si falta o está blank se genera uno
+     * (compatibilidad con clientes que no envían tenantId).
+     */
+    static String resolveTenantId(String requested) {
+        if (requested == null || requested.isBlank()) {
+            return UUID.randomUUID().toString();
+        }
+        String trimmed = requested.trim();
+        try {
+            return UUID.fromString(trimmed).toString();
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("tenantId inválido: debe ser un UUID");
+        }
     }
 }
